@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Package, Truck, CheckCircle2, ChevronRight, Clock } from 'lucide-react-native';
 import { KarmaCoin } from '../components/shared/KarmaCoin';
@@ -9,26 +10,27 @@ export function OrdersScreen({ navigation }: any) {
   const [activeTab, setActiveTab] = useState<'Active' | 'History'>('Active');
   const [orders, setOrders] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
 
-  useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        setIsLoading(true);
-        const data = await bookingService.getMyBookings();
-        setOrders(data || []);
-      } catch (error) {
-        console.error('Failed to fetch orders', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    const unsubscribe = navigation.addListener('focus', () => {
-      fetchOrders();
-    });
-    fetchOrders();
-    return unsubscribe;
-  }, [navigation]);
+  const loadOrders = useCallback(async () => {
+    setIsLoading(true);
+    setHasError(false);
+    try {
+      const data = await bookingService.getMyBookings();
+      setOrders(data || []);
+    } catch (error) {
+      console.error('Failed to fetch orders', error);
+      setHasError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadOrders();
+    }, [loadOrders])
+  );
 
   const formatOrder = (order: any) => {
     let uiStatus = 'Scheduled';
@@ -78,8 +80,8 @@ export function OrdersScreen({ navigation }: any) {
         {/* Deep Green Header */}
         <LinearGradient colors={['#064e3b', '#15803d']} style={styles.header}>
           <View style={styles.headerTop}>
-            <Text style={styles.headerSubtitle}>TRACK YOUR IMPACT</Text>
-            <Text style={styles.headerTitle}>My Pickups</Text>
+            <Text style={styles.headerSubtitle}>Track your impact</Text>
+            <Text style={styles.headerTitle}>My pickups</Text>
           </View>
 
           {/* Custom Tab Switcher (Integrated into Header bottom) */}
@@ -88,13 +90,13 @@ export function OrdersScreen({ navigation }: any) {
               style={[styles.tabBtn, activeTab === 'Active' && styles.tabBtnActive]} 
               onPress={() => setActiveTab('Active')}
             >
-              <Text style={[styles.tabText, activeTab === 'Active' && styles.tabTextActive]}>Active Pickups</Text>
+              <Text style={[styles.tabText, activeTab === 'Active' && styles.tabTextActive]}>Active pickups</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.tabBtn, activeTab === 'History' && styles.tabBtnActive]} 
               onPress={() => setActiveTab('History')}
             >
-              <Text style={[styles.tabText, activeTab === 'History' && styles.tabTextActive]}>Past History</Text>
+              <Text style={[styles.tabText, activeTab === 'History' && styles.tabTextActive]}>Past history</Text>
             </TouchableOpacity>
           </View>
         </LinearGradient>
@@ -105,13 +107,22 @@ export function OrdersScreen({ navigation }: any) {
                <ActivityIndicator size="large" color="#16a34a" />
                <Text style={{ marginTop: 12, color: '#64748b' }}>Loading your pickups...</Text>
              </View>
+          ) : hasError ? (
+            <View style={styles.emptyState}>
+              <Text style={{ fontSize: 36 }}>⚠️</Text>
+              <Text style={[styles.emptyText, { color: '#ef4444' }]}>Could not load pickups</Text>
+              <Text style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', marginTop: 4 }}>Check your connection and try again</Text>
+              <TouchableOpacity style={styles.scheduleBtn} onPress={loadOrders}>
+                <Text style={styles.scheduleBtnText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
           ) : filteredOrders.length === 0 ? (
             <View style={styles.emptyState}>
               <Package size={56} color="#cbd5e1" />
               <Text style={styles.emptyText}>No {activeTab.toLowerCase()} pickups found.</Text>
               {activeTab === 'Active' && (
                 <TouchableOpacity style={styles.scheduleBtn} onPress={() => navigation.navigate('SchedulePickup')}>
-                  <Text style={styles.scheduleBtnText}>Schedule a Pickup</Text>
+                  <Text style={styles.scheduleBtnText}>Schedule a pickup</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -125,9 +136,9 @@ export function OrdersScreen({ navigation }: any) {
                   activeOpacity={0.7}
                   onPress={() => {
                     if (order.status === 'Completed') {
-                      navigation.navigate('BookingDetails');
+                      navigation.navigate('BookingDetails', { bookingId: order.originalId });
                     } else {
-                      navigation.navigate('OrderTracking');
+                      navigation.navigate('OrderTracking', { booking: { _id: order.originalId } });
                     }
                   }}
                 >
@@ -151,7 +162,7 @@ export function OrdersScreen({ navigation }: any) {
 
                   <View style={styles.cardFooter}>
                     <View style={styles.creditsBox}>
-                      <Text style={styles.creditsLabel}>Est. Reward</Text>
+                      <Text style={styles.creditsLabel}>Est. reward</Text>
                       <View style={styles.creditsRow}>
                         <KarmaCoin size={16} />
                         <Text style={styles.creditsValue}>+{order.credits}</Text>

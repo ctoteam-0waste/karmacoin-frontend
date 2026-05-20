@@ -1,10 +1,13 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, StatusBar, TouchableOpacity, Dimensions, TextInput } from 'react-native';
-import { ChevronLeft, MapPin, CheckCircle2, PackageOpen, Plus, Minus, TriangleAlert, FileText, Magnet, Droplets, Wine, Smartphone, Shirt, Leaf } from 'lucide-react-native';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, StatusBar, TouchableOpacity, Dimensions, TextInput, Alert } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { ChevronLeft, MapPin, CheckCircle2, PackageOpen, Plus, TriangleAlert, FileText, Magnet, Droplets, Wine, Smartphone, Shirt, Leaf } from 'lucide-react-native';
 import { KarmaCoin } from '../components/shared/KarmaCoin';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CupSoda, ShoppingBag, Archive, Newspaper as NewsIcon, BookOpen, StickyNote, Database, Cog, Utensils, Activity, Sparkles, Laptop, Cable, Tv, Scissors, Apple, Trees, Battery, PaintBucket, Trash2, Loader2 } from 'lucide-react-native';
+import { CupSoda, ShoppingBag, Archive, Newspaper as NewsIcon, BookOpen, StickyNote, Database, Cog, Utensils, Activity, Sparkles, Laptop, Cable, Tv, Scissors, Apple, Trees, Battery, PaintBucket, Trash2 } from 'lucide-react-native';
 import { bookingService } from '../services/booking';
+import { profileService } from '../services/profile';
+import * as Location from 'expo-location';
 
 const { width } = Dimensions.get('window');
 const CARD_MARGIN = 8;
@@ -12,12 +15,12 @@ const CARD_WIDTH = (width - 40 - (CARD_MARGIN * 2)) / 2;
 
 // Re-using the premium catalog from old StoreScreen
 const CATEGORIES = [
-  { id: '1', title: 'Plastic Waste', color: '#0ea5e9', icon: Droplets },
-  { id: '2', title: 'Paper Waste', color: '#84cc16', icon: FileText },
-  { id: '3', title: 'Metal Waste', color: '#64748b', icon: Magnet },
-  { id: '4', title: 'Glass Waste', color: '#10b981', icon: Wine },
-  { id: '5', title: 'E-Waste', color: '#14b8a6', icon: Smartphone },
-  { id: '6', title: 'Textile Waste', color: '#6366f1', icon: Shirt },
+  { id: '1', title: 'Plastic waste', color: '#0ea5e9', icon: Droplets },
+  { id: '2', title: 'Paper waste', color: '#84cc16', icon: FileText },
+  { id: '3', title: 'Metal waste', color: '#64748b', icon: Magnet },
+  { id: '4', title: 'Glass waste', color: '#10b981', icon: Wine },
+  { id: '5', title: 'E-waste', color: '#14b8a6', icon: Smartphone },
+  { id: '6', title: 'Textile waste', color: '#6366f1', icon: Shirt },
   { id: '7', title: 'Organic', color: '#eab308', icon: Leaf },
   { id: '8', title: 'Hazardous', color: '#ef4444', icon: TriangleAlert },
 ];
@@ -99,6 +102,38 @@ export function SchedulePickupScreen({ navigation }: any) {
   const [selectedTime, setSelectedTime] = useState(TIMES[0]);
   const [instructions, setInstructions] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [userAddress, setUserAddress] = useState('42, Green Park Colony, Sector 14, Gurugram, Haryana - 122001');
+  const [userCoordinates, setUserCoordinates] = useState<[number, number]>([77.0266, 28.4595]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          setUserCoordinates([loc.coords.longitude, loc.coords.latitude]);
+          console.log('[Location] Fetched dynamic user coordinates:', [loc.coords.longitude, loc.coords.latitude]);
+        }
+      } catch (err) {
+        console.log('[Location] Failed to fetch device location fallback to Gurugram:', err);
+      }
+    })();
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      profileService.getProfile().then(data => {
+        if (data && data.address) {
+          const resolvedAddress = typeof data.address === 'object'
+            ? data.address.fullAddress
+            : data.address;
+          if (resolvedAddress) {
+            setUserAddress(resolvedAddress);
+          }
+        }
+      }).catch(err => console.log('Failed to fetch profile address', err));
+    }, [])
+  );
 
   // Cart Logic
   const updateQuantity = (itemId: string, delta: number) => {
@@ -145,8 +180,23 @@ export function SchedulePickupScreen({ navigation }: any) {
   };
 
   const handleConfirmPickup = async () => {
+    console.log('[Confirm Pickup] Pressed! Cart:', cart);
+    console.log('[Confirm Pickup] userAddress State:', userAddress);
+
     if (Object.keys(cart).length === 0) {
-      alert("Please add items to your cart first.");
+      Alert.alert("Empty Cart", "Please add items to your cart first.");
+      return;
+    }
+
+    if (!userAddress || userAddress.trim().length === 0) {
+      Alert.alert(
+        "Pickup Address Required",
+        "Please save your home or office address in the Profile section before scheduling a pickup.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Go to Profile", onPress: () => navigation.navigate('Profile') }
+        ]
+      );
       return;
     }
 
@@ -154,7 +204,7 @@ export function SchedulePickupScreen({ navigation }: any) {
     try {
       // Structure the categories array
       const payloadCategories: any[] = [];
-      Object.entries(cart).forEach(([itemId, qty]) => {
+      Object.entries(cart).forEach(([itemId]) => {
         const item = ALL_ITEMS.find(i => i.id === itemId);
         if (item) {
           const categoryObj = CATEGORIES.find(c => c.id === item.catId);
@@ -171,25 +221,37 @@ export function SchedulePickupScreen({ navigation }: any) {
         }
       });
 
+      console.log('[Confirm Pickup] Submitting booking with coordinates:', userCoordinates);
       const payload = {
         categories: payloadCategories,
         pickupDate: selectedDate, // ISO string
         timeSlot: selectedTime,
         address: {
-          fullAddress: '42, Green Park Colony, Sector 14, Gurugram, Haryana - 122001',
+          fullAddress: userAddress,
           location: {
             type: 'Point' as const,
-            coordinates: [77.0266, 28.4595] as [number, number] // [longitude, latitude] for Gurugram approx
+            coordinates: userCoordinates
           }
         }
       };
 
-      await bookingService.createBooking(payload);
-      
+      const res = await bookingService.createBooking(payload);
+      const createdBooking = res?.data || res;
+      console.log('[Confirm Pickup] Created booking:', createdBooking);
+
       setIsSubmitted(true);
-      setTimeout(() => navigation.replace('OrderTracking'), 2500);
+      setTimeout(() => {
+        // Navigate back to root tabs and open the Orders tab so user sees the booking
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'App', params: { screen: 'Orders' } }],
+        });
+      }, 2000);
     } catch (error: any) {
-      alert(error?.response?.data?.message || "Failed to schedule pickup. Please try again.");
+      Alert.alert(
+        "Scheduling Failed",
+        error?.response?.data?.message || "Failed to schedule pickup. Please try again."
+      );
     } finally {
       setIsLoading(false);
     }
@@ -260,15 +322,10 @@ export function SchedulePickupScreen({ navigation }: any) {
                       <Text style={styles.addBtnText}>ADD</Text>
                     </TouchableOpacity>
                   ) : (
-                    <View style={styles.qtyControl}>
-                      <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(item.id, -1)}>
-                        <Minus size={16} color="#16a34a" />
-                      </TouchableOpacity>
-                      <Text style={styles.qtyText}>{qty}</Text>
-                      <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(item.id, 1)}>
-                        <Plus size={16} color="#16a34a" />
-                      </TouchableOpacity>
-                    </View>
+                    <TouchableOpacity style={styles.addedBtn} onPress={() => updateQuantity(item.id, -qty)}>
+                      <CheckCircle2 size={16} color="#16a34a" />
+                      <Text style={styles.addedBtnText}>ADDED</Text>
+                    </TouchableOpacity>
                   )}
                 </View>
               </View>
@@ -301,7 +358,7 @@ export function SchedulePickupScreen({ navigation }: any) {
       {/* Date */}
       <View style={styles.sectionHeader}>
         <View style={styles.sectionNum}><Text style={styles.sectionNumText}>2</Text></View>
-        <Text style={styles.sectionTitle}>Choose Pickup Date</Text>
+        <Text style={styles.sectionTitle}>Choose pickup date</Text>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateScroller}>
         {DATES.map((item) => {
@@ -318,7 +375,7 @@ export function SchedulePickupScreen({ navigation }: any) {
       {/* Time */}
       <View style={[styles.sectionHeader, { marginTop: 8 }]}>
         <View style={styles.sectionNum}><Text style={styles.sectionNumText}>3</Text></View>
-        <Text style={styles.sectionTitle}>Choose Time Slot</Text>
+        <Text style={styles.sectionTitle}>Choose time slot</Text>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeScroller}>
         {TIMES.map((time) => {
@@ -334,7 +391,7 @@ export function SchedulePickupScreen({ navigation }: any) {
       {/* Address */}
       <View style={styles.sectionHeader}>
         <View style={styles.sectionNum}><Text style={styles.sectionNumText}>4</Text></View>
-        <Text style={styles.sectionTitle}>Confirm Address</Text>
+        <Text style={styles.sectionTitle}>Confirm address</Text>
       </View>
       <View style={styles.addressCard}>
         <View style={styles.addressLeftRow}>
@@ -344,17 +401,18 @@ export function SchedulePickupScreen({ navigation }: any) {
               <Text style={styles.homeLabelText}>Home</Text>
               <View style={styles.defaultTag}><Text style={styles.defaultTagText}>Default</Text></View>
             </View>
-            <Text style={styles.addressValue}>42, Green Park Colony, Sector 14</Text>
-            <Text style={styles.addressValue}>Gurugram, Haryana - 122001</Text>
+            <Text style={[styles.addressValue, { maxWidth: '85%' }]}>{userAddress}</Text>
           </View>
         </View>
-        <Text style={styles.changeText}>Change</Text>
+        <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
+          <Text style={styles.changeText}>Change</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Estimates Box based on Cart */}
       <View style={styles.estimatesBox}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.estimateLabel}>Estimated Earnings</Text>
+          <Text style={styles.estimateLabel}>Estimated earnings</Text>
           <View style={styles.estimateValueRow}>
             <KarmaCoin size={24} />
             <Text style={styles.estimateValue}>+{cartCalculations.totalCoins}</Text>
@@ -364,7 +422,7 @@ export function SchedulePickupScreen({ navigation }: any) {
         <View style={styles.estimateBigCoin}><KarmaCoin size={60} glow /></View>
       </View>
 
-      <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Special Instructions <Text style={{fontWeight: '400', fontSize: 13, color: '#9ca3af'}}>(optional)</Text></Text>
+      <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Special instructions <Text style={{fontWeight: '400', fontSize: 13, color: '#9ca3af'}}>(optional)</Text></Text>
       <TextInput
         style={styles.inputBox}
         placeholder="E.g. Ring the bell twice, leave at the door..."
@@ -380,7 +438,7 @@ export function SchedulePickupScreen({ navigation }: any) {
         disabled={isLoading}
       >
         {isLoading ? <CheckCircle2 size={20} color="transparent" /> : <CheckCircle2 size={20} color="white" />}
-        <Text style={styles.submitBtnText}>{isLoading ? 'Scheduling...' : 'Confirm Pickup'}</Text>
+        <Text style={styles.submitBtnText}>{isLoading ? 'Scheduling...' : 'Confirm pickup'}</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -404,7 +462,7 @@ export function SchedulePickupScreen({ navigation }: any) {
               <ChevronLeft size={22} color="white" />
             </TouchableOpacity>
             <View>
-              <Text style={styles.headerTitle}>Schedule Pickup</Text>
+              <Text style={styles.headerTitle}>Schedule pickup</Text>
               <Text style={styles.headerSub}>Step {currentStep} of 2</Text>
             </View>
             <View style={{width: 36}}/>
@@ -450,9 +508,8 @@ const styles = StyleSheet.create({
   
   addBtn: { backgroundColor: '#1e293b', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: 10, gap: 4 },
   addBtnText: { color: 'white', fontSize: 12, fontWeight: '800' },
-  qtyControl: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#dcfce7', borderRadius: 10, padding: 4 },
-  qtyBtn: { width: 32, height: 32, backgroundColor: 'white', borderRadius: 8, alignItems: 'center', justifyContent: 'center', elevation: 1 },
-  qtyText: { fontSize: 15, fontWeight: '900', color: '#16a34a' },
+  addedBtn: { backgroundColor: '#dcfce7', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: 10, gap: 4, borderWidth: 1, borderColor: '#16a34a' },
+  addedBtnText: { color: '#16a34a', fontSize: 12, fontWeight: '800' },
 
   floatingCart: { position: 'absolute', bottom: 30, left: 20, right: 20, backgroundColor: '#1e293b', borderRadius: 24, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10 },
   cartInfo: { flex: 1 },

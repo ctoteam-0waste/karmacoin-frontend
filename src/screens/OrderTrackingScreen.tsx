@@ -6,83 +6,117 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline, UrlTile, PROVIDER_DEFAULT } from 'react-native-maps';
 import {
-  ArrowLeft, Phone, HelpCircle, Star, MapPin,
+  ArrowLeft, Phone, HelpCircle, Star,
   CheckCircle2, Circle, Loader2
 } from 'lucide-react-native';
+import { useUserSocket } from '../context/UserSocketContext';
 
 const { height } = Dimensions.get('window');
 
-// ── Mock Data (replace with real API data later) ──
+// Status ordering — used to calculate which steps are done
+const STATUS_ORDER = ['ORDER_PLACED', 'AGENT_ASSIGNED', 'AGENT_REACHED', 'VERIFICATION', 'COMPLETED'];
+
+const EVENT_TO_STATUS: Record<string, string> = {
+  BOOKING_ACCEPTED: 'AGENT_ASSIGNED',
+  AGENT_REACHED: 'AGENT_REACHED',
+  BOOKING_PICKED_UP: 'VERIFICATION',
+  BOOKING_COMPLETED: 'COMPLETED',
+};
+
+const BASE_STEPS = [
+  { key: 'ORDER_PLACED',   label: 'Order Placed',       sublabel: 'Your pickup request is confirmed' },
+  { key: 'AGENT_ASSIGNED', label: 'Agent Assigned',     sublabel: 'Agent accepted and is on the way' },
+  { key: 'AGENT_REACHED',  label: 'Agent Reached',      sublabel: 'Agent has reached your location' },
+  { key: 'VERIFICATION',   label: 'Verification & Coins', sublabel: 'Waste weighed, KarmaCoins credited' },
+  { key: 'COMPLETED',      label: 'Completed',           sublabel: 'Reached warehouse and completed' },
+];
+
+const STATUS_MESSAGES: Record<string, string> = {
+  ORDER_PLACED:   'Your pickup request is confirmed',
+  AGENT_ASSIGNED: 'Agent accepted your booking and is on the way!',
+  AGENT_REACHED:  'Agent has reached your location!',
+  VERIFICATION:   'Waste verified. KarmaCoins credited to your wallet!',
+  COMPLETED:      'Booking complete. Thank you for using KarmaCredits!',
+  POOL:           'High demand in your area. Your booking is in our priority pool.',
+};
+
+// ── Mock booking — replace with navigation params in production ──
 const mockBooking = {
   id: 'KC12345',
-  status: 'AGENT_REACHED',
-  agent: {
-    name: 'Ravi Kumar',
-    rating: 4.8,
-    phone: '+91 98765 43210',
-    initials: 'RK',
-  },
+  agent: { name: 'Ravi Kumar', rating: 4.8, phone: '+91 98765 43210', initials: 'RK' },
   distanceKm: 0.3,
   etaMins: 3,
   estimatedCoins: 45,
-  // Agent location (mock — will come from Socket.io later)
-  agentLocation: {
-    latitude: 28.5580,
-    longitude: 77.3910,
-  },
-  // User location (mock — will come from expo-location later)
-  userLocation: {
-    latitude: 28.5355,
-    longitude: 77.3910,
-  },
+  agentLocation: { latitude: 28.5580, longitude: 77.3910 },
+  userLocation: { latitude: 28.5355, longitude: 77.3910 },
 };
 
-const statusSteps = [
-  {
-    key: 'ORDER_PLACED',
-    label: 'Order Placed',
-    sublabel: 'Your pickup request is confirmed',
-    time: '10:30 AM',
-    done: true,
-  },
-  {
-    key: 'AGENT_ASSIGNED',
-    label: 'Agent Assigned',
-    sublabel: 'Ravi Kumar has been assigned and is on the way',
-    time: '10:32 AM',
-    done: true,
-  },
-  {
-    key: 'AGENT_REACHED',
-    label: 'Agent Reached',
-    sublabel: 'Agent has reached your location',
-    time: '10:45 AM',
-    done: false,
-    active: true,
-  },
-  {
-    key: 'VERIFICATION',
-    label: 'Verification & Coins',
-    sublabel: 'Verification in progress',
-    time: '',
-    done: false,
-    active: false,
-  },
-  {
-    key: 'COMPLETED',
-    label: 'Completed',
-    sublabel: 'Reached warehouse and process completed',
-    time: '',
-    done: false,
-    active: false,
-  },
-];
-
-export function OrderTrackingScreen({ navigation }: any) {
+export function OrderTrackingScreen({ route, navigation }: any) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const [agentPos, setAgentPos] = useState(mockBooking.agentLocation);
+  
+  // Resolve passed parameters or fallback to mock data
+  const passedBooking = route?.params?.booking;
+  const bookingData = {
+    id: passedBooking?._id || passedBooking?.id || mockBooking.id,
+    distanceKm: passedBooking?.distanceKm || mockBooking.distanceKm,
+    etaMins: passedBooking?.etaMins || mockBooking.etaMins,
+    estimatedCoins: passedBooking?.coins || passedBooking?.estimatedCoins || mockBooking.estimatedCoins,
+    agentLocation: passedBooking?.agent?.location || passedBooking?.agentLocation || mockBooking.agentLocation,
+    userLocation: passedBooking?.location || passedBooking?.userLocation || mockBooking.userLocation,
+  };
 
-  // Pulse animation for active step
+  const [activeAgent, setActiveAgent] = useState<any>(passedBooking?.agent || null);
+  const [agentPos, setAgentPos] = useState(bookingData.agentLocation);
+  const [currentStatus, setCurrentStatus] = useState('ORDER_PLACED');
+  const [liveMessage, setLiveMessage] = useState(STATUS_MESSAGES['ORDER_PLACED']);
+  const [earnedCoins, setEarnedCoins] = useState<number | null>(null);
+  const [isPool, setIsPool] = useState(false);
+
+  const { latestUpdate, clearLatestUpdate } = useUserSocket();
+
+  // ── Handle incoming socket events ──
+  useEffect(() => {
+    if (!latestUpdate) return;
+
+    // Verify if socket event matches the active booking ID
+    const eventBookingId = latestUpdate.bookingId;
+    if (eventBookingId && eventBookingId !== bookingData.id) {
+      return; // Ignore updates from other bookings
+    }
+
+    const mappedStatus = EVENT_TO_STATUS[latestUpdate.event];
+
+    if (latestUpdate.event === 'BOOKING_ACCEPTED') {
+      const agentObj = latestUpdate.agent || (latestUpdate as any).booking?.agent;
+      if (agentObj) {
+        setActiveAgent(agentObj);
+      }
+    }
+
+    if (latestUpdate.event === 'BOOKING_IN_POOL') {
+      setIsPool(true);
+      setLiveMessage(STATUS_MESSAGES['POOL']);
+    } else if (latestUpdate.event === 'BOOKING_CANCEL_SUCCESS') {
+      setLiveMessage('Booking cancelled.');
+    } else if (latestUpdate.event === 'AGENT_LOCATION_UPDATE' && latestUpdate.agentLocation) {
+      // Dynamically update agent marker position on map
+      setAgentPos(latestUpdate.agentLocation);
+    } else if (mappedStatus) {
+      setIsPool(false);
+      setCurrentStatus(mappedStatus);
+      setLiveMessage(latestUpdate.message || STATUS_MESSAGES[mappedStatus]);
+      if (latestUpdate.event === 'BOOKING_PICKED_UP' && latestUpdate.totalKarmaCoins) {
+        setEarnedCoins(latestUpdate.totalKarmaCoins);
+      }
+      if (latestUpdate.agentLocation) {
+        setAgentPos(latestUpdate.agentLocation);
+      }
+    }
+
+    clearLatestUpdate();
+  }, [latestUpdate]);
+
+  // ── Pulse animation for active step ──
   useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
@@ -94,12 +128,21 @@ export function OrderTrackingScreen({ navigation }: any) {
     return () => pulse.stop();
   }, []);
 
+  // Compute which steps are done/active from currentStatus
+  const currentIndex = STATUS_ORDER.indexOf(currentStatus);
+  const steps = BASE_STEPS.map((step, i) => ({
+    ...step,
+    done: i < currentIndex,
+    active: i === currentIndex,
+  }));
+
   const region = {
-    latitude: (agentPos.latitude + mockBooking.userLocation.latitude) / 2,
-    longitude: (agentPos.longitude + mockBooking.userLocation.longitude) / 2,
+    latitude: (agentPos.latitude + bookingData.userLocation.latitude) / 2,
+    longitude: (agentPos.longitude + bookingData.userLocation.longitude) / 2,
     latitudeDelta: 0.03,
     longitudeDelta: 0.03,
   };
+
 
   return (
     <View style={styles.container}>
@@ -120,7 +163,7 @@ export function OrderTrackingScreen({ navigation }: any) {
       <View style={styles.bookingBadge}>
         <View style={styles.bookingBadgeLeft}>
           <Text style={styles.bookingIdLabel}>Booking ID</Text>
-          <Text style={styles.bookingId}>{mockBooking.id}</Text>
+          <Text style={styles.bookingId}>{bookingData.id}</Text>
         </View>
         <View style={styles.inProgressBadge}>
           <View style={styles.inProgressDot} />
@@ -129,24 +172,38 @@ export function OrderTrackingScreen({ navigation }: any) {
       </View>
 
       {/* ── Agent Card ── */}
-      <View style={styles.agentCard}>
-        <View style={styles.agentAvatar}>
-          <Text style={styles.agentInitials}>{mockBooking.agent.initials}</Text>
-        </View>
-        <View style={styles.agentInfo}>
-          <Text style={styles.agentName}>{mockBooking.agent.name}</Text>
-          <View style={styles.agentRatingRow}>
-            <Star size={12} color="#f59e0b" fill="#f59e0b" />
-            <Text style={styles.agentRating}>{mockBooking.agent.rating}</Text>
-            <Text style={styles.agentDistance}>
-              • {mockBooking.distanceKm} km away • {mockBooking.etaMins} mins
+      {activeAgent ? (
+        <View style={styles.agentCard}>
+          <View style={styles.agentAvatar}>
+            <Text style={styles.agentInitials}>
+              {activeAgent.name ? activeAgent.name.split(' ').map((n: any) => n[0]).join('').toUpperCase() : 'AP'}
             </Text>
           </View>
+          <View style={styles.agentInfo}>
+            <Text style={styles.agentName}>{activeAgent.name || 'Agent Partner'}</Text>
+            <View style={styles.agentRatingRow}>
+              <Star size={12} color="#f59e0b" fill="#f59e0b" />
+              <Text style={styles.agentRating}>{activeAgent.rating || 4.8}</Text>
+              <Text style={styles.agentDistance}>
+                • {bookingData.distanceKm} km away • {bookingData.etaMins} mins
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity style={styles.callBtn}>
+            <Phone size={16} color="#15803d" />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.callBtn}>
-          <Phone size={16} color="#15803d" />
-        </TouchableOpacity>
-      </View>
+      ) : (
+        <View style={[styles.agentCard, { backgroundColor: '#f0fdf4', borderColor: '#86efac', borderWidth: 1 }]}>
+          <View style={[styles.agentAvatar, { backgroundColor: '#dcfce7' }]}>
+            <Loader2 size={20} color="#15803d" />
+          </View>
+          <View style={styles.agentInfo}>
+            <Text style={[styles.agentName, { color: '#166534', fontWeight: '700' }]}>Finding Agent...</Text>
+            <Text style={styles.agentDistance}>Searching for nearest active recycling partner</Text>
+          </View>
+        </View>
+      )}
 
       {/* ── Map ── */}
       <View style={styles.mapContainer}>
@@ -174,7 +231,7 @@ export function OrderTrackingScreen({ navigation }: any) {
           </Marker>
 
           {/* User Marker 📍 */}
-          <Marker coordinate={mockBooking.userLocation} anchor={{ x: 0.5, y: 1 }}>
+          <Marker coordinate={bookingData.userLocation} anchor={{ x: 0.5, y: 1 }}>
             <View style={styles.userMarker}>
               <View style={styles.userMarkerInner} />
             </View>
@@ -182,7 +239,7 @@ export function OrderTrackingScreen({ navigation }: any) {
 
           {/* Route Line */}
           <Polyline
-            coordinates={[agentPos, mockBooking.userLocation]}
+            coordinates={[agentPos, bookingData.userLocation]}
             strokeColor="#15803d"
             strokeWidth={3}
             lineDashPattern={[8, 4]}
@@ -195,26 +252,40 @@ export function OrderTrackingScreen({ navigation }: any) {
 
         {/* Live Status */}
         <View style={styles.liveStatusRow}>
-          <Animated.View style={[styles.liveDot, { transform: [{ scale: pulseAnim }] }]} />
+          <Animated.View style={[styles.liveDot, { transform: [{ scale: pulseAnim }], backgroundColor: isPool ? '#f59e0b' : '#22c55e' }]} />
           <Text style={styles.liveStatusLabel}>Live Status</Text>
           <Text style={styles.liveStatusTime}>Just now</Text>
         </View>
-        <Text style={styles.liveStatusText}>Agent has reached your location</Text>
+        <Text style={styles.liveStatusText}>{liveMessage}</Text>
+
+        {/* Priority Pool Badge */}
+        {isPool && (
+          <View style={styles.poolBadge}>
+            <Text style={styles.poolBadgeText}>⏳ In Priority Pool — We'll notify you when an agent picks up</Text>
+          </View>
+        )}
+
+        {/* KarmaCoins earned toast */}
+        {earnedCoins !== null && (
+          <View style={styles.coinsBadge}>
+            <Text style={styles.coinsBadgeText}>🎉 {earnedCoins} KarmaCoins credited to your wallet!</Text>
+          </View>
+        )}
 
         {/* Stats Row */}
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{mockBooking.distanceKm} km</Text>
+            <Text style={styles.statValue}>{bookingData.distanceKm} km</Text>
             <Text style={styles.statLabel}>Distance Away</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{mockBooking.etaMins} mins</Text>
+            <Text style={styles.statValue}>{bookingData.etaMins} mins</Text>
             <Text style={styles.statLabel}>ETA</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{mockBooking.estimatedCoins} KC</Text>
+            <Text style={styles.statValue}>{bookingData.estimatedCoins} KC</Text>
             <Text style={styles.statLabel}>Est. Coins</Text>
           </View>
         </View>
@@ -222,7 +293,7 @@ export function OrderTrackingScreen({ navigation }: any) {
         {/* Progress Steps */}
         <Text style={styles.sectionTitle}>Tracking Progress</Text>
         <View style={styles.stepsContainer}>
-          {statusSteps.map((step, index) => (
+          {steps.map((step, index) => (
             <View key={step.key} style={styles.stepRow}>
               {/* Icon */}
               <View style={styles.stepIconCol}>
@@ -239,7 +310,7 @@ export function OrderTrackingScreen({ navigation }: any) {
                     <Circle size={20} color="#d1d5db" />
                   </View>
                 )}
-                {index < statusSteps.length - 1 && (
+                {index < steps.length - 1 && (
                   <View style={[styles.stepLine, step.done && styles.stepLineDone]} />
                 )}
               </View>
@@ -250,7 +321,6 @@ export function OrderTrackingScreen({ navigation }: any) {
                   <Text style={[styles.stepLabel, step.active && styles.stepLabelActive, !step.done && !step.active && styles.stepLabelPending]}>
                     {step.label}
                   </Text>
-                  {step.time ? <Text style={styles.stepTime}>{step.time}</Text> : null}
                 </View>
                 <Text style={styles.stepSublabel}>{step.sublabel}</Text>
               </View>
@@ -347,6 +417,11 @@ const styles = StyleSheet.create({
   stepLabelPending: { color: '#94a3b8' },
   stepTime: { fontSize: 11, color: '#64748b', fontWeight: '600' },
   stepSublabel: { fontSize: 12, color: '#94a3b8', fontWeight: '500', marginTop: 2 },
+
+  poolBadge: { backgroundColor: '#fef3c7', borderRadius: 12, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: '#fde68a' },
+  poolBadgeText: { fontSize: 13, color: '#92400e', fontWeight: '600', lineHeight: 18 },
+  coinsBadge: { backgroundColor: '#f0fdf4', borderRadius: 12, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: '#bbf7d0' },
+  coinsBadgeText: { fontSize: 13, color: '#15803d', fontWeight: '700' },
 
   // Buttons
   primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#15803d', borderRadius: 16, paddingVertical: 16, marginBottom: 12, elevation: 3, shadowColor: '#15803d', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },

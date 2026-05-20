@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, StatusBar, Modal, TextInput, KeyboardAvoidingView, Platform, Animated, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, StatusBar, Modal, TextInput, KeyboardAvoidingView, Platform, Animated, ActivityIndicator, Alert } from 'react-native';
 import { ChevronLeft, User, MapPin, Flame, Settings, HeartHandshake, LogOut, FileText, Trophy, X, Mail, Phone, ShieldCheck, CheckCircle, CalendarDays, UserSquare2, Heart, Briefcase } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { KarmaCoin } from '../components/shared/KarmaCoin';
@@ -55,6 +55,9 @@ export function ProfileScreen({ navigation }: any) {
           phone: data.phone || '+91 00000 00000',
           email: data.email || '',
           coins: data.karmaCoins || data.coins || 0,
+          address: data.address
+            ? (typeof data.address === 'object' ? data.address.fullAddress : data.address)
+            : '',
           demographics: {
             age: data.demographics?.age || data.age || 25,
             gender: data.demographics?.gender || data.gender || 'Not Specified',
@@ -109,7 +112,7 @@ export function ProfileScreen({ navigation }: any) {
 
   const handleSaveAddress = async () => {
     if (!addressForm.fullAddress.trim() || addressForm.fullAddress.trim().length < 5) {
-      alert('Please enter a valid address (at least 5 characters).');
+      Alert.alert('Invalid Address', 'Please enter a valid address (at least 5 characters).');
       return;
     }
     setIsSavingAddress(true);
@@ -118,7 +121,7 @@ export function ProfileScreen({ navigation }: any) {
       setUserProfile({ ...userProfile, address: addressForm.fullAddress.trim() });
       closeAddressModal();
     } catch (e) {
-      alert('Failed to update address. Please try again.');
+      Alert.alert('Error', 'Failed to update address. Please try again.');
     } finally {
       setIsSavingAddress(false);
     }
@@ -137,8 +140,6 @@ export function ProfileScreen({ navigation }: any) {
   
   // temporary edit form state
   const [editForm, setEditForm] = useState<any>({});
-  const [otpCode, setOtpCode] = useState('');
-  const [otpError, setOtpError] = useState(false);
 
   // Animation utility for modal slide up
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -154,8 +155,6 @@ export function ProfileScreen({ navigation }: any) {
       slideAnim.setValue(0);
       setTimeout(() => {
         setFlowStep('form');
-        setOtpCode('');
-        setOtpError(false);
       }, 300);
     }
   }, [modalVisible]);
@@ -193,43 +192,27 @@ export function ProfileScreen({ navigation }: any) {
     }).start(() => setDemoModalVisible(false));
   };
 
-  const handleRequestOTP = () => {
+  const handleSaveProfile = async () => {
     if (!editForm.name || !editForm.email || !editForm.phone) return;
-    
-    // Simulate sending OTP
-    setFlowStep('loading');
-    setTimeout(() => {
-      setFlowStep('otp');
-    }, 1200);
-  };
-
-  const handleVerifyOTP = async () => {
-    if (otpCode.length < 4) return;
     
     setFlowStep('loading');
     
     try {
-      if (otpCode === '1234') {
-        // Send to backend
-        await profileService.updateAccount({
-          name: editForm.name,
-          email: editForm.email,
-          phone: editForm.phone
-        });
-        
-        // Success
-        setUserProfile({ ...userProfile, ...editForm });
-        setFlowStep('success');
-        setTimeout(() => {
-          closeModal();
-        }, 2000);
-      } else {
-        // Failure
-        setFlowStep('otp');
-        setOtpError(true);
-      }
+      // Send to backend directly
+      await profileService.updateAccount({
+        name: editForm.name,
+        email: editForm.email,
+        phone: editForm.phone
+      });
+      
+      // Success
+      setUserProfile({ ...userProfile, ...editForm });
+      setFlowStep('success');
+      setTimeout(() => {
+        closeModal();
+      }, 2000);
     } catch (error) {
-      alert("Failed to update account details");
+      Alert.alert("Update Failed", "Failed to update account details");
       setFlowStep('form');
     }
   };
@@ -490,12 +473,11 @@ export function ProfileScreen({ navigation }: any) {
 
                 <TouchableOpacity 
                   style={[styles.primaryActionBtn, (!editForm.name || !editForm.email || !editForm.phone) && styles.primaryActionBtnDisabled]} 
-                  onPress={handleRequestOTP}
+                  onPress={handleSaveProfile}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.primaryActionText}>Save & Verify Changes</Text>
+                  <Text style={styles.primaryActionText}>Save Changes</Text>
                 </TouchableOpacity>
-                <Text style={styles.securityNote}>A verification code will be sent to confirm your identity.</Text>
               </View>
             )}
 
@@ -503,44 +485,7 @@ export function ProfileScreen({ navigation }: any) {
             {flowStep === 'loading' && (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#16a34a" />
-                <Text style={styles.loadingText}>Please wait...</Text>
-              </View>
-            )}
-
-            {/* Step 2: OTP Entry */}
-            {flowStep === 'otp' && (
-              <View style={styles.otpContainer}>
-                <View style={styles.otpIconWrapper}>
-                  <ShieldCheck size={36} color="#16a34a" />
-                </View>
-                <Text style={styles.otpHeading}>Enter Verification Code</Text>
-                <Text style={styles.otpSub}>Code sent securely to <Text style={{fontWeight: '700'}}>{editForm.email}</Text></Text>
-                
-                <TextInput
-                  style={[styles.otpMainInput, otpError && styles.otpInputError]}
-                  value={otpCode}
-                  onChangeText={(t) => {
-                    setOtpCode(t);
-                    setOtpError(false);
-                  }}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  placeholder="• • • •"
-                  placeholderTextColor="#cbd5e1"
-                  autoFocus
-                />
-                {otpError && <Text style={styles.errorText}>Invalid code. Use 1234.</Text>}
-
-                <TouchableOpacity 
-                  style={[styles.primaryActionBtn, {marginTop: 20}, otpCode.length < 4 && styles.primaryActionBtnDisabled]} 
-                  onPress={handleVerifyOTP}
-                >
-                  <Text style={styles.primaryActionText}>Verify & Update</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.resendBtn}>
-                  <Text style={styles.resendText}>Didn't receive code? <Text style={{color: '#16a34a', fontWeight: 'bold'}}>Resend</Text></Text>
-                </TouchableOpacity>
+                <Text style={styles.loadingText}>Saving details...</Text>
               </View>
             )}
 

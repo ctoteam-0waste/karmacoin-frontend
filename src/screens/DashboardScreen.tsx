@@ -18,7 +18,7 @@ const FEATURES = [
     id: 'pickup',
     emoji: '🚛',
     tag: 'STEP 1',
-    title: 'Schedule a Pickup',
+    title: 'Schedule a pickup',
     desc: 'Book a doorstep pickup for your recyclable waste in just 3 taps. We collect plastic, metal, paper, e-waste & more.',
     benefit: 'Earn Credits on Pickup',
     benefitIcon: <Coins size={16} color="#f59e0b" />,
@@ -30,7 +30,7 @@ const FEATURES = [
     id: 'upload',
     emoji: '📸',
     tag: 'STEP 2',
-    title: 'Upload & Earn',
+    title: 'Upload & earn',
     desc: 'Click a photo of your waste. Our AI identifies the type, weight, and credits your account within minutes.',
     benefit: 'Fast & Easy Verification',
     benefitIcon: <BadgeCheck size={16} color="#60a5fa" />,
@@ -42,7 +42,7 @@ const FEATURES = [
     id: 'earn',
     emoji: '🪙',
     tag: 'EARN',
-    title: 'Karma Credits',
+    title: 'Karma credits',
     desc: 'Every kg of waste you recycle earns you Karma Credits. Keep your streaks up for even more rewards!',
     benefit: 'Reward for Every kg',
     benefitIcon: <Star size={16} color="#fbbf24" fill="#fbbf24" />,
@@ -54,7 +54,7 @@ const FEATURES = [
     id: 'redeem',
     emoji: '🎁',
     tag: 'REDEEM',
-    title: 'Amazing Rewards',
+    title: 'Amazing rewards',
     desc: 'Use your credits for eco products, vouchers, plant trees, or donate to green causes. Real rewards, real impact.',
     benefit: 'Eco-friendly Goodies',
     benefitIcon: <Gift size={16} color="#f472b6" />,
@@ -66,7 +66,7 @@ const FEATURES = [
     id: 'impact',
     emoji: '🌍',
     tag: 'IMPACT',
-    title: 'Your Green Impact',
+    title: 'Your green impact',
     desc: 'See your personal contribution — CO₂ saved, trees equivalent, and your rank among eco heroes in your city.',
     benefit: 'Track Your Journey',
     benefitIcon: <ShieldCheck size={16} color="#34d399" />,
@@ -78,7 +78,7 @@ const FEATURES = [
     id: 'refer',
     emoji: '👥',
     tag: 'REFER',
-    title: 'Invite Friends',
+    title: 'Invite friends',
     desc: 'Share your referral code. When your friend makes their first pickup, you both get bonus Karma Credits!',
     benefit: 'Bonus for Every Friend',
     benefitIcon: <Coins size={16} color="#fb923c" />,
@@ -195,7 +195,7 @@ export function DashboardScreen({ navigation }: any) {
         {/* Karma Credits card */}
         <View style={styles.creditsCard}>
           <View style={styles.creditsHeader}>
-            <Text style={styles.creditsLabel}>KARMA CREDITS BALANCE</Text>
+            <Text style={styles.creditsLabel}>Karma credits balance</Text>
             <TouchableOpacity style={styles.walletLink}>
               <Text style={styles.walletLinkText}>Wallet</Text>
               <ChevronRight size={14} color="#86efac" />
@@ -228,7 +228,7 @@ export function DashboardScreen({ navigation }: any) {
       {/* Feature Discovery — Swipeable Cards */}
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Discover the App ✨</Text>
+          <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Discover the app ✨</Text>
           <Text style={styles.discoverSub}>Swipe to explore →</Text>
         </View>
         <ScrollView
@@ -254,8 +254,8 @@ export function DashboardScreen({ navigation }: any) {
               <Gamepad2 size={24} color="#fbbf24" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.quizTitle}>Daily Eco-Quiz 🧠</Text>
-              <Text style={styles.quizSub}>Play & earn up to 50 Karma Credits today!</Text>
+              <Text style={styles.quizTitle}>Daily eco-quiz 🧠</Text>
+              <Text style={styles.quizSub}>Play & earn up to 50 Karma credits today!</Text>
             </View>
           </View>
           <TouchableOpacity style={styles.quizBtn} onPress={() => navigation.navigate('Quiz')}>
@@ -266,7 +266,7 @@ export function DashboardScreen({ navigation }: any) {
 
       {/* Quick Actions — placed here for better UX: user sees context first, then acts */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
+        <Text style={styles.sectionTitle}>Quick actions</Text>
         <View style={styles.actionsGrid}>
           <TouchableOpacity 
             style={[styles.actionBtn, { backgroundColor: '#f0fdf4' }]}
@@ -275,13 +275,13 @@ export function DashboardScreen({ navigation }: any) {
             <View style={[styles.actionIconBg, { backgroundColor: 'rgba(22,163,74,0.1)' }]}>
               <Truck size={20} color="#16a34a" />
             </View>
-            <Text style={styles.actionText}>Schedule{'\n'}Pickup</Text>
+            <Text style={styles.actionText}>Schedule{'\n'}pickup</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#f0f9ff' }]}>
             <View style={[styles.actionIconBg, { backgroundColor: 'rgba(8,145,178,0.1)' }]}>
               <Camera size={20} color="#0891b2" />
             </View>
-            <Text style={styles.actionText}>Upload{'\n'}Waste</Text>
+            <Text style={styles.actionText}>Upload{'\n'}waste</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.actionBtn, { backgroundColor: '#faf5ff' }]}
@@ -290,7 +290,7 @@ export function DashboardScreen({ navigation }: any) {
             <View style={[styles.actionIconBg, { backgroundColor: 'rgba(124,58,237,0.1)' }]}>
               <Clock size={20} color="#7c3aed" />
             </View>
-            <Text style={styles.actionText}>My{'\n'}Orders</Text>
+            <Text style={styles.actionText}>My{'\n'}orders</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.actionBtn, { backgroundColor: '#fdf2f8' }]}
@@ -299,7 +299,7 @@ export function DashboardScreen({ navigation }: any) {
             <View style={[styles.actionIconBg, { backgroundColor: 'rgba(219,39,119,0.1)' }]}>
               <Users size={20} color="#db2777" />
             </View>
-            <Text style={styles.actionText}>Refer{'\n'}& Earn</Text>
+            <Text style={styles.actionText}>Refer{'\n'}& earn</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -307,7 +307,7 @@ export function DashboardScreen({ navigation }: any) {
       {/* Recent Orders */}
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Recent Orders</Text>
+          <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Recent orders</Text>
           <TouchableOpacity style={styles.seeAllBtn}>
             <Text style={styles.seeAllText}>See all</Text>
             <ChevronRight size={14} color="#16a34a" />
@@ -350,9 +350,9 @@ export function DashboardScreen({ navigation }: any) {
       {/* Knowledge Hub (LinkedIn Articles) */}
       <View style={[styles.section, { marginBottom: 40 }]}>
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Knowledge Hub</Text>
+          <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Knowledge hub</Text>
           <TouchableOpacity style={styles.seeAllBtn} onPress={() => navigation.navigate('KnowledgeHub')}>
-            <Text style={styles.seeAllText}>More Articles</Text>
+            <Text style={styles.seeAllText}>More articles</Text>
             <ChevronRight size={14} color="#16a34a" />
           </TouchableOpacity>
         </View>

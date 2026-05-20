@@ -10,7 +10,13 @@ export const authService = {
         password: passwordOrOtp 
       });
       
-      const token = response.data.data.token;
+      // Safely extract token whether it's nested inside 'data' or directly on the response
+      const token = response.data?.data?.token || response.data?.token;
+      
+      if (!token) {
+        throw new Error('Authentication failed: No token received from server');
+      }
+
       await AsyncStorage.setItem('userToken', token);
       
       return response.data;

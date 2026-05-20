@@ -51,7 +51,7 @@ export function WalletScreen() {
         {/* Dynamic Header */}
         <LinearGradient colors={['#064e3b', '#15803d']} style={styles.header}>
           <View style={styles.headerTop}>
-            <Text style={styles.headerTitle}>My Wallet</Text>
+            <Text style={styles.headerTitle}>My wallet</Text>
             <TouchableOpacity style={styles.historyBtn}>
               <History size={20} color="#15803d" />
             </TouchableOpacity>
@@ -59,7 +59,7 @@ export function WalletScreen() {
 
           <View style={styles.balanceCard}>
             <View style={styles.cardTopRow}>
-              <Text style={styles.cardLabel}>TOTAL KARMA CREDITS</Text>
+              <Text style={styles.cardLabel}>Total karma credits</Text>
               <View style={styles.activeTag}>
                 <View style={styles.activeDot} />
                 <Text style={styles.activeText}>Active</Text>
@@ -98,7 +98,7 @@ export function WalletScreen() {
 
           {/* Transaction History */}
           <View style={styles.historySection}>
-            <Text style={styles.sectionTitle}>Recent Transactions</Text>
+            <Text style={styles.sectionTitle}>Recent transactions</Text>
             
             {isLoading ? (
               <View style={{ alignItems: 'center', paddingVertical: 40 }}>
